@@ -82,6 +82,16 @@
       "types": "./dist/schedule.d.ts",
       "import": "./dist/schedule.js",
       "require": "./dist/schedule.js"
+    },
+    "./ai-chat-agent-http": {
+      "types": "./dist/ai-chat-agent-http.d.ts",
+      "import": "./dist/ai-chat-agent-http.js",
+      "require": "./dist/ai-chat-agent-http.js"
+    },
+    "./use-agent-chat-http": {
+      "types": "./dist/use-agent-chat-http.d.ts",
+      "import": "./dist/use-agent-chat-http.js",
+      "require": "./dist/use-agent-chat-http.js"
     }
   },
   "files": [
