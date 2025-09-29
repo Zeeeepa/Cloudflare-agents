@@ -5,6 +5,7 @@ import type {
   OAuthClientMetadata,
   OAuthTokens
 } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { nanoid } from "nanoid";
 
 // A slight extension to the standard OAuthClientProvider interface because `redirectToAuthorization` doesn't give us the interface we need
 // This allows us to track authentication for a specific server and associated dynamic client registration
@@ -122,12 +123,9 @@ export class DurableObjectOAuthClientProvider implements AgentsOAuthProvider {
    * and require user interact to initiate the redirect flow
    */
   async redirectToAuthorization(authUrl: URL): Promise<void> {
-    // We want to track the client ID in state here because the typescript SSE client sometimes does
-    // a dynamic client registration AFTER generating this redirect URL.
-    const client_id = authUrl.searchParams.get("client_id");
-    if (client_id) {
-      authUrl.searchParams.append("state", client_id);
-    }
+    // Generate secure random token for state parameter
+    const stateToken = nanoid();
+    authUrl.searchParams.set("state", stateToken);
     this._authUrl_ = authUrl.toString();
   }
 
@@ -136,7 +134,15 @@ export class DurableObjectOAuthClientProvider implements AgentsOAuthProvider {
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
-    await this.storage.put(this.codeVerifierKey(this.clientId), verifier);
+    const key = this.codeVerifierKey(this.clientId);
+
+    // Don't overwrite existing verifier to preserve first PKCE verifier
+    const existing = await this.storage.get<string>(key);
+    if (existing) {
+      return;
+    }
+
+    await this.storage.put(key, verifier);
   }
 
   async codeVerifier(): Promise<string> {

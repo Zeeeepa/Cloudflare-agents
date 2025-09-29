@@ -1,8 +1,17 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { SSEClientTransportOptions } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { StreamableHTTPClientTransportOptions } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+// Import types directly from MCP SDK
+import type {
+  Prompt,
+  Resource,
+  Tool
+} from "@modelcontextprotocol/sdk/types.js";
 import {
   type ClientCapabilities,
+  type ElicitRequest,
+  ElicitRequestSchema,
+  type ElicitResult,
   type ListPromptsResult,
   type ListResourceTemplatesResult,
   type ListResourcesResult,
@@ -11,45 +20,53 @@ import {
   ResourceListChangedNotificationSchema,
   type ResourceTemplate,
   type ServerCapabilities,
-  ToolListChangedNotificationSchema,
-  ElicitRequestSchema,
-  type ElicitRequest,
-  type ElicitResult
+  ToolListChangedNotificationSchema
 } from "@modelcontextprotocol/sdk/types.js";
+import { nanoid } from "nanoid";
+import { Emitter, type Event } from "../core/events";
+import type { MCPObservabilityEvent } from "../observability/mcp";
 import type { AgentsOAuthProvider } from "./do-oauth-client-provider";
+import {
+  isTransportNotImplemented,
+  isUnauthorized,
+  toErrorMessage
+} from "./errors";
 import { SSEEdgeClientTransport } from "./sse-edge";
 import { StreamableHTTPEdgeClientTransport } from "./streamable-http-edge";
-// Import types directly from MCP SDK
-import type {
-  Tool,
-  Resource,
-  Prompt
-} from "@modelcontextprotocol/sdk/types.js";
+import type { BaseTransportType, TransportType } from "./types";
+
+/**
+ * Connection state for MCP client connections
+ */
+export type MCPConnectionState =
+  | "authenticating"
+  | "connecting"
+  | "ready"
+  | "discovering"
+  | "failed";
 
 export type MCPTransportOptions = (
   | SSEClientTransportOptions
   | StreamableHTTPClientTransportOptions
 ) & {
   authProvider?: AgentsOAuthProvider;
-  type?: "sse" | "streamable-http" | "auto";
+  type?: TransportType;
 };
-
-type TransportType = Exclude<MCPTransportOptions["type"], "auto">;
 
 export class MCPClientConnection {
   client: Client;
-  connectionState:
-    | "authenticating"
-    | "connecting"
-    | "ready"
-    | "discovering"
-    | "failed" = "connecting";
+  connectionState: MCPConnectionState = "connecting";
+  lastConnectedTransport: BaseTransportType | undefined;
   instructions?: string;
   tools: Tool[] = [];
   prompts: Prompt[] = [];
   resources: Resource[] = [];
   resourceTemplates: ResourceTemplate[] = [];
   serverCapabilities: ServerCapabilities | undefined;
+
+  private readonly _onObservabilityEvent = new Emitter<MCPObservabilityEvent>();
+  public readonly onObservabilityEvent: Event<MCPObservabilityEvent> =
+    this._onObservabilityEvent.event;
 
   constructor(
     public url: URL,
@@ -73,27 +90,133 @@ export class MCPClientConnection {
   /**
    * Initialize a client connection
    *
-   * @param code Optional OAuth code to initialize the connection with if auth hasn't been initialized
    * @returns
    */
-  async init(code?: string) {
+  async init() {
+    const transportType = this.options.transport.type;
+    if (!transportType) {
+      throw new Error("Transport type must be specified");
+    }
+
     try {
-      const transportType = this.options.transport.type || "streamable-http";
-      await this.tryConnect(transportType, code);
-      // biome-ignore lint/suspicious/noExplicitAny: allow for the error check here
-    } catch (e: any) {
-      if (e.toString().includes("Unauthorized")) {
+      await this.tryConnect(transportType);
+    } catch (e) {
+      if (isUnauthorized(e)) {
         // unauthorized, we should wait for the user to authenticate
         this.connectionState = "authenticating";
         return;
       }
+      // For explicit transport mismatches or other errors, mark as failed
+      // and do not throw to avoid bubbling errors to the client runtime.
+      this._onObservabilityEvent.fire({
+        type: "mcp:client:connect",
+        displayMessage: `Connection initialization failed for ${this.url.toString()}`,
+        payload: {
+          url: this.url.toString(),
+          transport: transportType,
+          state: this.connectionState,
+          error: toErrorMessage(e)
+        },
+        timestamp: Date.now(),
+        id: nanoid()
+      });
       this.connectionState = "failed";
-      throw e;
+      return;
     }
 
+    await this.discoverAndRegister();
+  }
+
+  /**
+   * Finish OAuth by probing transports based on configured type.
+   * - Explicit: finish on that transport
+   * - Auto: try streamable-http, then sse on 404/405/Not Implemented
+   */
+  private async finishAuthProbe(code: string): Promise<void> {
+    if (!this.options.transport.authProvider) {
+      throw new Error("No auth provider configured");
+    }
+
+    const configuredType = this.options.transport.type;
+    if (!configuredType) {
+      throw new Error("Transport type must be specified");
+    }
+
+    const finishAuth = async (base: BaseTransportType) => {
+      const transport = this.getTransport(base);
+      await transport.finishAuth(code);
+    };
+
+    if (configuredType === "sse" || configuredType === "streamable-http") {
+      await finishAuth(configuredType);
+      return;
+    }
+
+    // For "auto" mode, try streamable-http first, then fall back to SSE
+    try {
+      await finishAuth("streamable-http");
+    } catch (e) {
+      if (isTransportNotImplemented(e)) {
+        await finishAuth("sse");
+        return;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Complete OAuth authorization
+   */
+  async completeAuthorization(code: string): Promise<void> {
+    if (this.connectionState !== "authenticating") {
+      throw new Error(
+        "Connection must be in authenticating state to complete authorization"
+      );
+    }
+
+    try {
+      // Finish OAuth by probing transports per configuration
+      await this.finishAuthProbe(code);
+
+      // Mark as connecting
+      this.connectionState = "connecting";
+    } catch (error) {
+      this.connectionState = "failed";
+      throw error;
+    }
+  }
+
+  /**
+   * Establish connection after successful authorization
+   */
+  async establishConnection(): Promise<void> {
+    if (this.connectionState !== "connecting") {
+      throw new Error(
+        "Connection must be in connecting state to establish connection"
+      );
+    }
+
+    try {
+      const transportType = this.options.transport.type;
+      if (!transportType) {
+        throw new Error("Transport type must be specified");
+      }
+      await this.tryConnect(transportType);
+
+      await this.discoverAndRegister();
+    } catch (error) {
+      this.connectionState = "failed";
+      throw error;
+    }
+  }
+
+  /**
+   * Discover server capabilities and register tools, resources, prompts, and templates
+   */
+  private async discoverAndRegister(): Promise<void> {
     this.connectionState = "discovering";
 
-    this.serverCapabilities = await this.client.getServerCapabilities();
+    this.serverCapabilities = this.client.getServerCapabilities();
     if (!this.serverCapabilities) {
       throw new Error("The MCP Server failed to return server capabilities");
     }
@@ -122,7 +245,18 @@ export class MCPClientConnection {
 
     for (const { name, result } of operations) {
       if (result.status === "rejected") {
-        console.error(`Failed to initialize ${name}:`, result.reason);
+        const url = this.url.toString();
+        this._onObservabilityEvent.fire({
+          type: "mcp:client:discover",
+          displayMessage: `Failed to discover ${name} for ${url}`,
+          payload: {
+            url,
+            capability: name,
+            error: result.reason
+          },
+          timestamp: Date.now(),
+          id: nanoid()
+        });
       }
     }
 
@@ -213,7 +347,7 @@ export class MCPClientConnection {
         .listTools({
           cursor: toolsResult.nextCursor
         })
-        .catch(capabilityErrorHandler({ tools: [] }, "tools/list"));
+        .catch(this._capabilityErrorHandler({ tools: [] }, "tools/list"));
       toolsAgg = toolsAgg.concat(toolsResult.tools);
     } while (toolsResult.nextCursor);
     return toolsAgg;
@@ -227,7 +361,9 @@ export class MCPClientConnection {
         .listResources({
           cursor: resourcesResult.nextCursor
         })
-        .catch(capabilityErrorHandler({ resources: [] }, "resources/list"));
+        .catch(
+          this._capabilityErrorHandler({ resources: [] }, "resources/list")
+        );
       resourcesAgg = resourcesAgg.concat(resourcesResult.resources);
     } while (resourcesResult.nextCursor);
     return resourcesAgg;
@@ -241,7 +377,7 @@ export class MCPClientConnection {
         .listPrompts({
           cursor: promptsResult.nextCursor
         })
-        .catch(capabilityErrorHandler({ prompts: [] }, "prompts/list"));
+        .catch(this._capabilityErrorHandler({ prompts: [] }, "prompts/list"));
       promptsAgg = promptsAgg.concat(promptsResult.prompts);
     } while (promptsResult.nextCursor);
     return promptsAgg;
@@ -258,7 +394,7 @@ export class MCPClientConnection {
           cursor: templatesResult.nextCursor
         })
         .catch(
-          capabilityErrorHandler(
+          this._capabilityErrorHandler(
             { resourceTemplates: [] },
             "resources/templates/list"
           )
@@ -286,7 +422,7 @@ export class MCPClientConnection {
    * @param transportType - The transport type to get
    * @returns The transport for the client
    */
-  getTransport(transportType: TransportType) {
+  getTransport(transportType: BaseTransportType) {
     switch (transportType) {
       case "streamable-http":
         return new StreamableHTTPEdgeClientTransport(
@@ -303,8 +439,8 @@ export class MCPClientConnection {
     }
   }
 
-  async tryConnect(transportType: MCPTransportOptions["type"], code?: string) {
-    const transports: TransportType[] =
+  private async tryConnect(transportType: TransportType) {
+    const transports: BaseTransportType[] =
       transportType === "auto" ? ["streamable-http", "sse"] : [transportType];
 
     for (const currentTransportType of transports) {
@@ -315,23 +451,46 @@ export class MCPClientConnection {
         currentTransportType === "streamable-http" &&
         !isLastTransport;
 
-      const transport = await this.getTransport(currentTransportType);
-
-      if (code) {
-        await transport.finishAuth(code);
-      }
+      const transport = this.getTransport(currentTransportType);
 
       try {
         await this.client.connect(transport);
+        this.lastConnectedTransport = currentTransportType;
+        const url = this.url.toString();
+        this._onObservabilityEvent.fire({
+          type: "mcp:client:connect",
+          displayMessage: `Connected successfully using ${currentTransportType} transport for ${url}`,
+          payload: {
+            url,
+            transport: currentTransportType,
+            state: this.connectionState
+          },
+          timestamp: Date.now(),
+          id: nanoid()
+        });
         break;
       } catch (e) {
         const error = e instanceof Error ? e : new Error(String(e));
 
-        if (
-          hasFallback &&
-          (error.message.includes("404") || error.message.includes("405"))
-        ) {
-          // try the next transport if we have a fallback
+        // If unauthorized, bubble up for proper auth handling
+        if (isUnauthorized(error)) {
+          throw e;
+        }
+
+        if (hasFallback && isTransportNotImplemented(error)) {
+          // Try the next transport silently
+          const url = this.url.toString();
+          this._onObservabilityEvent.fire({
+            type: "mcp:client:connect",
+            displayMessage: `${currentTransportType} transport not available, trying ${transports[transports.indexOf(currentTransportType) + 1]} for ${url}`,
+            payload: {
+              url,
+              transport: currentTransportType,
+              state: this.connectionState
+            },
+            timestamp: Date.now(),
+            id: nanoid()
+          });
           continue;
         }
 
@@ -347,17 +506,26 @@ export class MCPClientConnection {
       }
     );
   }
-}
 
-function capabilityErrorHandler<T>(empty: T, method: string) {
-  return (e: { code: number }) => {
-    // server is badly behaved and returning invalid capabilities. This commonly occurs for resource templates
-    if (e.code === -32601) {
-      console.error(
-        `The server advertised support for the capability ${method.split("/")[0]}, but returned "Method not found" for '${method}'.`
-      );
-      return empty;
-    }
-    throw e;
-  };
+  private _capabilityErrorHandler<T>(empty: T, method: string) {
+    return (e: { code: number }) => {
+      // server is badly behaved and returning invalid capabilities. This commonly occurs for resource templates
+      if (e.code === -32601) {
+        const url = this.url.toString();
+        this._onObservabilityEvent.fire({
+          type: "mcp:client:discover",
+          displayMessage: `The server advertised support for the capability ${method.split("/")[0]}, but returned "Method not found" for '${method}' for ${url}`,
+          payload: {
+            url,
+            capability: method.split("/")[0],
+            error: toErrorMessage(e)
+          },
+          timestamp: Date.now(),
+          id: nanoid()
+        });
+        return empty;
+      }
+      throw e;
+    };
+  }
 }

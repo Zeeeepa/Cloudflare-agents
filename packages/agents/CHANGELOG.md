@@ -1,5 +1,116 @@
 # @cloudflare/agents
 
+## 0.2.7
+
+### Patch Changes
+
+- [#521](https://github.com/cloudflare/agents/pull/521) [`1bd0c75`](https://github.com/cloudflare/agents/commit/1bd0c75f44bc164e16f81bd20c9c9bd6fe790898) Thanks [@ghostwriternr](https://github.com/ghostwriternr)! - Fix OAuth state parameter security vulnerability by replacing client_id with secure random tokens
+
+- [#524](https://github.com/cloudflare/agents/pull/524) [`06b2ab0`](https://github.com/cloudflare/agents/commit/06b2ab0b7fe1a981441a590ad8779e30a4f0e924) Thanks [@threepointone](https://github.com/threepointone)! - update dependencies
+
+## 0.2.6
+
+### Patch Changes
+
+- [`b388447`](https://github.com/cloudflare/agents/commit/b3884475a7c3a268fe27fae2eb55f30c73cef4ab) Thanks [@threepointone](https://github.com/threepointone)! - fix: getAITools shouldn't include hyphens in tool names
+
+## 0.2.5
+
+### Patch Changes
+
+- [`a90de5d`](https://github.com/cloudflare/agents/commit/a90de5d23d99246da8a1bef0bfa557316f75585f) Thanks [@threepointone](https://github.com/threepointone)! - codemode: remove stray logs, fix demo
+
+## 0.2.4
+
+### Patch Changes
+
+- [`9a8fed7`](https://github.com/cloudflare/agents/commit/9a8fed774c263778bb51840e3b2d4891125ccaec) Thanks [@threepointone](https://github.com/threepointone)! - update deps
+
+## 0.2.3
+
+### Patch Changes
+
+- [#458](https://github.com/cloudflare/agents/pull/458) [`d3e7a68`](https://github.com/cloudflare/agents/commit/d3e7a6853ca60bfbe998785ec63938e5b4d7fe90) Thanks [@whoiskatrin](https://github.com/whoiskatrin)! - Add unified async authentication support to useAgent hook
+  The useAgent hook now automatically detects and handles both sync and async query patterns
+
+- [#512](https://github.com/cloudflare/agents/pull/512) [`f9f03b4`](https://github.com/cloudflare/agents/commit/f9f03b447a6e48eb3fad1c22a91d46d5b147da4c) Thanks [@threepointone](https://github.com/threepointone)! - codemode: a tool that generates code to run your tools
+
+- [#499](https://github.com/cloudflare/agents/pull/499) [`fb62d22`](https://github.com/cloudflare/agents/commit/fb62d2280fe2674bd4893e4e3d720fc7b3bb13a7) Thanks [@deathbyknowledge](https://github.com/deathbyknowledge)! - handle all message types in the reply streaming handler
+
+- [#509](https://github.com/cloudflare/agents/pull/509) [`71def6b`](https://github.com/cloudflare/agents/commit/71def6b8b9bfc75ed0b6e905bc204a78de63c772) Thanks [@ghostwriternr](https://github.com/ghostwriternr)! - Fix OAuth authentication for MCP servers and add transport configuration
+  - Fix authorization codes being consumed during transport fallback
+  - Add transport type option to addMcpServer() for explicit control
+  - Add configurable OAuth callback handling (redirects, custom responses)
+  - Fix callback URL persistence across Durable Object hibernation
+
+## 0.2.2
+
+### Patch Changes
+
+- [#504](https://github.com/cloudflare/agents/pull/504) [`da56baa`](https://github.com/cloudflare/agents/commit/da56baa831781ee1f31026daabf2f79c51e3c897) Thanks [@threepointone](https://github.com/threepointone)! - fix attribution
+
+## 0.2.1
+
+### Patch Changes
+
+- [`5969a16`](https://github.com/cloudflare/agents/commit/5969a162b89eb7a8506e63b5a829a2df7ccae77e) Thanks [@threepointone](https://github.com/threepointone)! - trigger a release
+
+## 0.2.0
+
+### Minor Changes
+
+- [#495](https://github.com/cloudflare/agents/pull/495) [`ff9329f`](https://github.com/cloudflare/agents/commit/ff9329f4fbcdcf770eeaaa0c9d2adb27e72bb0f6) Thanks [@ghostwriternr](https://github.com/ghostwriternr)! - Fix OAuth callback handling and add HOST auto-detection
+  - Fix OAuth callback "Not found" errors by removing MCPClientManager
+    override
+  - Add OAuth callback URL persistence across Durable Object hibernation
+  - Fix OAuth connection reuse during reconnect to prevent state loss
+  - Add OAuth transport tracking to prevent authorization code consumption
+    during auto-fallback
+  - Preserve PKCE verifier across transport attempts
+  - Make callbackHost parameter optional with automatic request-based
+    detection
+  - Add URL normalization for consistent transport endpoint handling
+
+### Patch Changes
+
+- [#465](https://github.com/cloudflare/agents/pull/465) [`6db2cd6`](https://github.com/cloudflare/agents/commit/6db2cd6f1497705f8636b1761a2db364d49d4861) Thanks [@BeiXiao](https://github.com/BeiXiao)! - fix(ai-react): prevent stale agent capture in aiFetch; ensure active connection is used
+
+- [#440](https://github.com/cloudflare/agents/pull/440) [`9ef35e2`](https://github.com/cloudflare/agents/commit/9ef35e218e711b7ba6d7f40d20573944ae68b44a) Thanks [@axuj](https://github.com/axuj)! - fix: pass agent.\_pk as id to useChat to prevent stale WebSocket instances
+
+## 0.1.6
+
+### Patch Changes
+
+- [#492](https://github.com/cloudflare/agents/pull/492) [`00ba881`](https://github.com/cloudflare/agents/commit/00ba88115d62b608564e783faac18754dc8a79cc) Thanks [@threepointone](https://github.com/threepointone)! - fix: this.mcp.getAITools now includes outputSchema
+
+- [#494](https://github.com/cloudflare/agents/pull/494) [`ecbd795`](https://github.com/cloudflare/agents/commit/ecbd7950dd0656e27ca3fcd8cdf69aa7292ec5ba) Thanks [@threepointone](https://github.com/threepointone)! - update deps
+
+## 0.1.5
+
+### Patch Changes
+
+- [#478](https://github.com/cloudflare/agents/pull/478) [`8234d41`](https://github.com/cloudflare/agents/commit/8234d413538add212738d4e9436ace3d0fd222d1) Thanks [@deathbyknowledge](https://github.com/deathbyknowledge)! - Refactor streamable HTTP transport
+
+- [#486](https://github.com/cloudflare/agents/pull/486) [`4abd78a`](https://github.com/cloudflare/agents/commit/4abd78af111d297fc1a3a7763728ca36b14a0a29) Thanks [@threepointone](https://github.com/threepointone)! - fix: don't context wrap methods on Agents that have already been wrapped
+
+- [#480](https://github.com/cloudflare/agents/pull/480) [`23db655`](https://github.com/cloudflare/agents/commit/23db65588effe698a77cc9514857dd9611def927) Thanks [@deathbyknowledge](https://github.com/deathbyknowledge)! - Update mcp tools and client for x402 support
+
+## 0.1.4
+
+### Patch Changes
+
+- [#470](https://github.com/cloudflare/agents/pull/470) [`28013ba`](https://github.com/cloudflare/agents/commit/28013ba700f6c2c0ce09dd3406f6da95569d68bf) Thanks [@deathbyknowledge](https://github.com/deathbyknowledge)! - Store initialize requests and set them in onStart
+
+- [#467](https://github.com/cloudflare/agents/pull/467) [`b8eba58`](https://github.com/cloudflare/agents/commit/b8eba582af89cc119ff15f155636fe7ba05d8534) Thanks [@deathbyknowledge](https://github.com/deathbyknowledge)! - Silently handle writer close errors
+
+- [`bfc9c75`](https://github.com/cloudflare/agents/commit/bfc9c75bbe8be4f078051cab9a4b95d3cab73ffc) Thanks [@whoiskatrin](https://github.com/whoiskatrin)! - add response metadata
+
+- [#469](https://github.com/cloudflare/agents/pull/469) [`fac1fe8`](https://github.com/cloudflare/agents/commit/fac1fe879892711b6e91760c45780fcbfc56f602) Thanks [@umgefahren](https://github.com/umgefahren)! - Include reasoning parts in finalized and persistet message.
+
+- [#472](https://github.com/cloudflare/agents/pull/472) [`2d0d2e1`](https://github.com/cloudflare/agents/commit/2d0d2e1e1a0883bd71c6e250da5f007a2dce0229) Thanks [@deathbyknowledge](https://github.com/deathbyknowledge)! - use header for session ids in streamable http GET streams
+
+- [`7d9b939`](https://github.com/cloudflare/agents/commit/7d9b9398e982737b4caa7f99c3a521e36df4961d) Thanks [@threepointone](https://github.com/threepointone)! - update dependencies
+
 ## 0.1.3
 
 ### Patch Changes
